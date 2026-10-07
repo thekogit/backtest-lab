@@ -119,28 +119,8 @@
   "settings": {
     "intervals": [
       {
-        "interval": "1m",
-        "period": "7d"
-      },
-      {
-        "interval": "2m",
-        "period": "30d"
-      },
-      {
-        "interval": "5m",
-        "period": "60d"
-      },
-      {
-        "interval": "15m",
-        "period": "60d"
-      },
-      {
-        "interval": "30m",
-        "period": "60d"
-      },
-      {
         "interval": "1h",
-        "period": "300d"
+        "period": "700d"
       },
       {
         "interval": "1d",

@@ -1,54 +1,12 @@
-# Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-cache/
-cache/*
-*.pkl
-reports/        # All generated reports
-reports/*       # Everything inside reports/
-*.html          # HTML reports
-*.csv           # CSV exports
+.venv/
 venv/
-env/
-ENV/
-.venv
-
-.vscode/
+.env
+cache/
+reports/
+*.pkl
 .idea/
-*.swp
-*.swo
-*~
-
+.vscode/
 .DS_Store
 Thumbs.db
-
-*.log
-*.csv
-*.db
-*.sqlite
-
-.env
-config.json
-secrets.json
-
-data/
-results/
-backtest_results/
