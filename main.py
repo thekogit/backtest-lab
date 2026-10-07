@@ -13,6 +13,7 @@ import time
 import pickle
 from pathlib import Path
 import multiprocessing
+from engine import Backtester
 from report_generator import ReportGenerator
 
 print_lock = Lock()
@@ -46,7 +47,7 @@ class DataCache:
                     data = pickle.load(f)
                     safe_print(f"Cache: {symbol} {interval}")
                     return data
-            except:
+            except Exception:
                 pass
         return None
 
@@ -55,7 +56,7 @@ class DataCache:
         try:
             with open(cache_path, 'wb') as f:
                 pickle.dump(data, f)
-        except:
+        except Exception:
             pass
 
     def fetch_with_rate_limit(self, symbol, period, interval):
@@ -156,164 +157,23 @@ class DataCache:
         safe_print(f"   Total: {total} | Cached: {cached} | Downloaded: {downloaded}\n")
 
 
-class Backtester:
-
-    __slots__ = ['data', 'strategy', 'interval', 'initial_capital', 'commission', 'slippage',
-                 'position_size_pct', 'capital', 'position', 'entry_price', 
-                 'trades', 'signals', 'risk_free_annual']
-
-    def __init__(self, data, strategy, interval='1d', initial_capital=10000, 
-                 commission=0.001, slippage=0.0005, position_size_pct=0.95, risk_free_annual=0.04):
-
-        self.data = data
-        self.strategy = strategy
-        self.interval = interval
-        self.initial_capital = initial_capital
-        self.commission = commission
-        self.slippage = slippage
-        self.position_size_pct = position_size_pct
-        self.capital = initial_capital
-        self.position = 0
-        self.entry_price = 0
-        self.trades = []
-        self.signals = []
-        self.risk_free_annual = risk_free_annual
-
-    def run_fast(self):
-        try:
-            signals = np.nan_to_num(np.asarray(self.strategy.generate_signals(self.data)), nan=0.0)
-            signals = np.sign(signals)
-        except Exception:
-            return None
-        
-        signals = np.roll(signals, 1)
-        signals[0] = 0
-
-        warmup = getattr(self.strategy, 'warmup_bars', 0)
-        if warmup > 0:
-            signals[:warmup] = 0
-        
-        self.signals = signals
-
-        closes = self.data['close'].values
-        n = len(closes)
-        portfolio_values = np.zeros(n)
-
-        for i in range(n):
-            close_price = closes[i]
-            signal = self.signals[i]
-
-            portfolio_values[i] = self.capital + (self.position * close_price)
-
-            if signal == 1 and self.position == 0:
-                shares_to_buy = (self.capital * self.position_size_pct) / close_price
-                if shares_to_buy > 0:
-                    execution_price = close_price * (1 + self.slippage)
-                    cost = shares_to_buy * execution_price * (1 + self.commission)
-                    if cost <= self.capital:
-                        self.trades.append({'i': i, 'side': 'buy', 'price': execution_price, 'size': shares_to_buy})
-                        self.position = shares_to_buy
-                        self.capital -= cost
-                        self.entry_price = execution_price
-
-            elif signal == -1 and self.position > 0:
-                execution_price = close_price * (1 - self.slippage)
-                proceeds = self.position * execution_price * (1 - self.commission)
-                self.trades.append({'i': i, 'side': 'sell', 'price': execution_price, 'size': self.position})
-                self.capital += proceeds
-                self.position = 0
-
-        if self.position > 0:
-            execution_price = closes[-1] * (1 - self.slippage)
-            proceeds = self.position * execution_price * (1 - self.commission)
-            self.trades.append({'i': n-1, 'side': 'sell', 'price': execution_price, 'size': self.position})
-            self.capital += proceeds
-            self.position = 0
-
-        return portfolio_values
-
-    @staticmethod
-    def bars_per_year(interval, market = 'equity'):
-        if market == 'crypto':
-            days_per_year = 365
-            hours_per_day = 24
-            mins_per_day = 24*60
-        else:
-            days_per_year = 252
-            hours_per_day = 6.5
-            mins_per_day = 390
-
-        if interval.endswith('d'):
-            return days_per_year
-
-        elif interval.endswith('h'):
-            hours = int(interval[:-1])
-            return int((hours_per_day / hours) * days_per_year)
-
-        elif interval.endswith('m'):
-            mins = int(interval[:-1])
-            return int((mins_per_day / mins) * days_per_year)
-
-        return days_per_year
-
-
-    def calculate_performance_fast(self, portfolio_values):
-        if portfolio_values is None or len(portfolio_values) == 0:
-            return None
-
-        final_value = portfolio_values[-1]
-        total_return = (final_value - self.initial_capital) / self.initial_capital
-
-        cummax = np.maximum.accumulate(portfolio_values)
-        drawdown = (portfolio_values - cummax) / cummax
-        max_drawdown = np.min(drawdown) if len(drawdown) > 0 else 0
-
-        returns = np.diff(portfolio_values) / portfolio_values[:-1]
-        returns = returns[np.isfinite(returns)]
-
-        bpyr = Backtester.bars_per_year(self.interval)
-
-        rf_bar = (1 + self.risk_free_annual)**(1 / bpyr) - 1
-        excess = returns - rf_bar
-        
-        if np.std(excess) > 0:
-            sharpe = np.mean(excess) / np.std(excess) * np.sqrt(bpyr)
-        else:
-            sharpe = 0.0
-
-        buy_hold_return = (self.data['close'].iloc[-1] - self.data['close'].iloc[0]) / self.data['close'].iloc[0]
-        alpha = total_return - buy_hold_return
-
-        num_trades = sum(1 for t in self.trades if t.get('side') == 'sell')
-
-        return {
-            'total_return': total_return,
-            'final_value': final_value,
-            'sharpe_ratio': sharpe,
-            'max_drawdown': max_drawdown,
-            'alpha': alpha,
-            'num_trades': num_trades
-        }
-
 def get_all_strategies():
     strategy_classes = []
     for name in dir(strategies):
         obj = getattr(strategies, name)
         if inspect.isclass(obj) and hasattr(obj, 'generate_signals'):
-            try:
-                instance = obj()
-                strategy_classes.append(instance)
-            except:
-                pass
+            strategy_classes.append(obj)
     return strategy_classes
 
-def test_combination_cached(args):
-    asset, interval_config, strategy, cache = args
+
+def run_combination(args):
+    asset, interval_config, strategy_cls, cache = args
 
     symbol = asset['symbol']
     interval = interval_config['interval']
     period = interval_config['period']
-    strategy_name = strategy.__class__.__name__
+    strategy = strategy_cls()
+    strategy_name = strategy_cls.__name__
 
     try:
         data = cache.fetch_with_rate_limit(symbol, period, interval)
@@ -321,35 +181,57 @@ def test_combination_cached(args):
         if data is None or len(data) < 30:
             return None
 
-        backtester = Backtester(data, strategy, interval=interval)
+        backtester = Backtester(data, strategy, interval=interval, market=asset['type'])
         portfolio_values = backtester.run_fast()
-        metrics = backtester.calculate_performance_fast(portfolio_values)
+        if portfolio_values is None:
+            return None
 
-        if metrics:
-            return_pct = metrics['total_return'] * 100
+        split = int(len(data) * 0.7)
+        is_metrics = backtester.calculate_performance_fast(portfolio_values, 0, split)
+        metrics = backtester.calculate_performance_fast(portfolio_values, split, None)
+        if not metrics or not is_metrics:
+            return None
 
-            if return_pct > 20:
-                status = "🟢"
-            elif return_pct > 0:
-                status = "🟡"
-            else:
-                status = "🔴"
+        return_pct = metrics['total_return'] * 100
 
-            safe_print(f"  {status} {symbol:10s} | {interval:4s} | {strategy_name:20s} | R: {return_pct:7.2f}% | A: {metrics['alpha']*100:7.2f}%")
+        if return_pct > 20:
+            status = "🟢"
+        elif return_pct > 0:
+            status = "🟡"
+        else:
+            status = "🔴"
 
-            return {
-                'symbol': symbol,
-                'asset_name': asset['name'],
-                'asset_type': asset['type'],
-                'interval': interval,
-                'strategy_name': strategy_name,
-                'metrics': metrics
-            }
+        safe_print(f"  {status} {symbol:10s} | {interval:4s} | {strategy_name:20s} | R: {return_pct:7.2f}% | Excess: {metrics['excess_vs_buy_hold']*100:7.2f}%")
 
-        return None
+        return {
+            'symbol': symbol,
+            'asset_name': asset['name'],
+            'asset_type': asset['type'],
+            'interval': interval,
+            'strategy_name': strategy_name,
+            'metrics': metrics,
+            'is_metrics': is_metrics
+        }
 
     except Exception as e:
+        safe_print(f"FAILED {strategy_cls.__name__} {symbol} {interval}: {e!r}")
         return None
+
+
+def print_oos_table(results):
+    best = {}
+    for r in results:
+        key = (r['symbol'], r['interval'])
+        if key not in best or r['is_metrics']['sharpe_ratio'] > best[key]['is_metrics']['sharpe_ratio']:
+            best[key] = r
+    print("| Asset | Interval | Picked on in-sample | IS Sharpe | OOS Sharpe | OOS return | Buy & hold OOS |")
+    print("|---|---|---|---|---|---|---|")
+    for r in sorted(best.values(), key=lambda r: (r['interval'], r['symbol'])):
+        m, im = r['metrics'], r['is_metrics']
+        bh = m['total_return'] - m['excess_vs_buy_hold']
+        print(f"| {r['symbol']} | {r['interval']} | {r['strategy_name']} | {im['sharpe_ratio']:.2f} | "
+              f"{m['sharpe_ratio']:.2f} | {m['total_return']*100:.1f}% | {bh*100:.1f}% |")
+
 
 def run_cached_backtest(assets_file='assets.json',
                               test_all_intervals=True,
@@ -385,8 +267,8 @@ def run_cached_backtest(assets_file='assets.json',
     tasks = []
     for asset in assets:
         for interval_config in intervals_config:
-            for strategy in all_strategies:
-                tasks.append((asset, interval_config, strategy, cache))
+            for strategy_cls in all_strategies:
+                tasks.append((asset, interval_config, strategy_cls, cache))
 
     results = []
     completed = 0
@@ -396,7 +278,7 @@ def run_cached_backtest(assets_file='assets.json',
     start_time = time.time()
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(test_combination_cached, task): task for task in tasks}
+        futures = {executor.submit(run_combination, task): task for task in tasks}
 
         for future in as_completed(futures):
             completed += 1
@@ -434,4 +316,5 @@ if __name__ == "__main__":
     if results:
         report_gen = ReportGenerator(output_dir='./reports')
         report_gen.generate(results, output_file='backtest_report')
+        print_oos_table(results)
         print("\n DONE!")

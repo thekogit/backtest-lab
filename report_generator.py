@@ -26,7 +26,7 @@ class ReportGenerator:
                 'Interval': result['interval'],
                 'Strategy': result['strategy_name'],
                 'Return (%)': metrics['total_return'] * 100,
-                'Alpha (%)': metrics['alpha'] * 100,
+                'Excess vs buy & hold (%)': metrics['excess_vs_buy_hold'] * 100,
                 'Sharpe': metrics['sharpe_ratio'],
                 'Max DD (%)': metrics['max_drawdown'] * 100
             })
@@ -50,14 +50,14 @@ class ReportGenerator:
         """Create scatter plot: Average Return vs Alpha across all timeframes"""
         strategy_avg = df.groupby('Strategy').agg({
             'Return (%)': 'mean',
-            'Alpha (%)': 'mean'
+            'Excess vs buy & hold (%)': 'mean'
         }).reset_index()
         
         fig = go.Figure()
         
         fig.add_trace(go.Scatter(
             x=strategy_avg['Return (%)'],
-            y=strategy_avg['Alpha (%)'],
+            y=strategy_avg['Excess vs buy & hold (%)'],
             mode='markers+text',
             name='Strategies',
             text=strategy_avg['Strategy'],
@@ -86,7 +86,7 @@ class ReportGenerator:
         """Create grouped bar chart showing Return vs Alpha by timeframe"""
         interval_avg = df.groupby('Interval').agg({
             'Return (%)': 'mean',
-            'Alpha (%)': 'mean'
+            'Excess vs buy & hold (%)': 'mean'
         }).reset_index()
         
         fig = go.Figure()
@@ -101,7 +101,7 @@ class ReportGenerator:
         fig.add_trace(go.Bar(
             name='Average Alpha',
             x=interval_avg['Interval'],
-            y=interval_avg['Alpha (%)'],
+            y=interval_avg['Excess vs buy & hold (%)'],
             marker_color='lightgray'
         ))
         
@@ -119,7 +119,7 @@ class ReportGenerator:
         """Create bar chart comparing strategies by return and alpha"""
         strategy_grouped = df.groupby('Strategy').agg({
             'Return (%)': 'mean',
-            'Alpha (%)': 'mean'
+            'Excess vs buy & hold (%)': 'mean'
         }).reset_index().sort_values('Return (%)', ascending=False)
         
         fig = go.Figure()
@@ -135,7 +135,7 @@ class ReportGenerator:
         fig.add_trace(go.Bar(
             name='Average Alpha',
             x=strategy_grouped['Strategy'],
-            y=strategy_grouped['Alpha (%)'],
+            y=strategy_grouped['Excess vs buy & hold (%)'],
             marker_color='gray',
             opacity=0.5
         ))
@@ -280,7 +280,7 @@ class ReportGenerator:
                     <th>Interval</th>
                     <th>Strategy</th>
                     <th>Return (%)</th>
-                    <th>Alpha (%)</th>
+                    <th>Excess vs buy & hold (%)</th>
                     <th>Sharpe</th>
                     <th>Max DD (%)</th>
                 </tr>
@@ -291,7 +291,7 @@ class ReportGenerator:
         # Add table rows
         for _, row in df.iterrows():
             return_class = 'positive' if row['Return (%)'] > 0 else 'negative'
-            alpha_class = 'positive' if row['Alpha (%)'] > 0 else 'negative'
+            alpha_class = 'positive' if row['Excess vs buy & hold (%)'] > 0 else 'negative'
             
             html_content += f'''
                 <tr>
@@ -301,7 +301,7 @@ class ReportGenerator:
                     <td>{row['Interval']}</td>
                     <td>{row['Strategy']}</td>
                     <td class="{return_class}">{row['Return (%)']:.2f}</td>
-                    <td class="{alpha_class}">{row['Alpha (%)']:.2f}</td>
+                    <td class="{alpha_class}">{row['Excess vs buy & hold (%)']:.2f}</td>
                     <td>{row['Sharpe']:.2f}</td>
                     <td class="negative">{row['Max DD (%)']:.2f}</td>
                 </tr>
