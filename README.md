@@ -21,7 +21,7 @@ Backtests that omit execution friction, use incorrect trading calendars, or repo
 
 Command: `python main.py`
 
-Tests: 598/598
+Combinations tested: 598
 
 | Asset | Interval | Picked on in-sample | IS Sharpe | OOS Sharpe | OOS return | Buy & hold OOS |
 |---|---|---|---|---|---|---|
