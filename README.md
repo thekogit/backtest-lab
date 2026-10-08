@@ -98,7 +98,7 @@ pytest -q
 
 ## How I used AI
 
-I used Claude Code to draft parts of the code. I chose the design, reviewed every change, rewrote the strategy evaluation and annualisation engine, and wrote the tests in tests/ to check it. Agent-made commits are visible in the history.
+I used Antigravity to draft parts of the code. I chose the design, reviewed every change, rewrote the strategy evaluation and annualisation engine, and wrote the tests in tests/ to check it. Agent-made commits are visible in the history.
 
 ## License
 
